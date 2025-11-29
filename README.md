@@ -1,104 +1,278 @@
-# TS-TDA-PREDICTION
 
-This repository contains a 4-step pipeline for time series forecasting using **Topological Data Analysis (TDA)** and **SARIMAX**.  
-Each step is implemented as a Jupyter notebook.
+This is the details of 000_Master_Copy_GM2 file that is the base code for the article "A Novel Algorithmic Framework for Time-Series Prediction via Topological Data Analysis". TRAIAL_SET_10_GM2 is the related dataset for the code. 
 
 ---
 
-## 1. Decomposition Step  
-**Notebook:** `TS_TDA_PREDICTION_DECOMPOSITION_STEP.ipynb`
+# 000_Master_Copy_GM2 – GM2 Time Series Forecasting Pipeline
 
-**Purpose:**  
-Takes the original time series as input and decomposes it into components (e.g. trend, seasonal, residual).
-
-**Main actions:**
-- Reads the raw time series.
-- Performs time series decomposition.
-- Saves the residual component into an Excel file (e.g. `tda_ready.xlsx`) that will be used in the next step.
-
-**Typical outputs:**
-- Plots of original vs. decomposed components.
-- A file containing the residuals for TDA (e.g. `tda_ready.xlsx`).
+This notebook implements the **complete forecasting pipeline for the GM2 dataset**, integrating **decomposition, statistical and topological feature extraction, feature selection, and SARIMAX-based forecasting**. It provides a full experimental framework to compare **benchmarks** with **TDA-enhanced exogenous SARIMAX models**.
 
 ---
 
-## 2. TDA Feature Extraction Step  
-**Notebook:** `TS_TDA_PREDICTION_TDA_STEP.ipynb`
+## Notebook Objectives
 
-**Purpose:**  
-Extracts topological features from the **residual** component of the time series.
+* Decompose the GM2 time series using **MSTL**
+* Extract:
 
-**Main actions:**
-- Loads `tda_ready.xlsx` (residual component from Step 1).
-- Applies TDA (e.g. sliding windows, persistence, etc.) to the residual series.
-- Computes a rich set of TDA-based features.
-- Includes many **Heat Kernel** features and computes a **PCA** representation of them.
-
-**Typical outputs:**
-- `tda_features_from_residuals_selected_scaled.xlsx`  
-  (main TDA feature set, scaled and ready for feature selection).
-- An additional file with PCA results of Heat Kernel features (e.g. PCA scores of HK features).
+  * **Statistical features** via `tsfresh`
+  * **Topological features** via `giotto-tda`
+* Apply **feature selection** using:
+  * Recursive Feature Elimination (RFE)
+  * Particle Swarm Optimization (PSO)
+* Train and evaluate multiple **SARIMAX forecasting models**
+* Compare **baseline, decomposition-only, statistical-feature-based, and TDA-feature-based models**
 
 ---
 
-## 3. Feature Selection Step  
-**Notebook:** `TS_TDA_FEATURE_SELECTION_STEP.ipynb`
+## Input Dataset
 
-**Purpose:**  
-Selects the most informative features using a combination of **RFE** and **PSO**.
+* **Primary time series**
 
-**Main actions:**
-- Loads the TDA feature dataset from Step 2.
-- Applies **Recursive Feature Elimination (RFE)** based on statistical significance (e.g. p-values).
-- Applies **Particle Swarm Optimization (PSO)** guided by an information criterion (e.g. BIC).
-- Combines these methods to obtain a final subset of selected features.
-
-**Typical outputs:**
-- An Excel/CSV file containing only the selected features (ready for SARIMAX).
+  * `TRIAL_SET_10_GM2ts.xlsx`
+  * Target column: `Operation`
 
 ---
 
-## 4. SARIMAX Prediction Step  
-**Notebook:** `TS_TDA_PREDICTION_SARIMAX_CODES.ipynb`
+## Environment & Dependencies
 
-**Purpose:**  
-Builds and evaluates **SARIMAX** models using the selected TDA features as exogenous variables.
+The notebook fixes library versions for reproducibility:
 
-**Main actions:**
-- Loads the selected feature set from Step 3.
-- Fits SARIMAX models to the original time series with exogenous TDA features.
-- Calculates forecasting performance metrics (e.g. MAE, RMSE, MAPE, SMAPE, MASE).
-- Produces plots and tables summarizing the forecasting results.
-
-**Typical outputs:**
-- Forecast vs. actual plots.
-- A table of regression / forecasting metrics.
-- Optional export of results to Excel/CSV.
+* `numpy == 1.23`
+* `pandas == 1.5.3`
+* `scipy == 1.7.3`
+* `tsfresh == 0.20.3`
+* `giotto-tda`
+* `statsmodels`
+* `pyswarm`
+* `scikit-learn`
+* `matplotlib`
 
 ---
 
-## Recommended Running Order
+## Pipeline Overview
 
-1. Run `TS_TDA_PREDICTION_DECOMPOSITION_STEP.ipynb`  
-2. Run `TS_TDA_PREDICTION_TDA_STEP.ipynb`  
-3. Run `TS_TDA_FEATURE_SELECTION_STEP.ipynb`  
-4. Run `TS_TDA_PREDICTION_SARIMAX_CODES.ipynb`
+### 0. Data Loading & Exploratory Analysis
 
-Each step uses the output files from the previous step, so keep the filenames and paths consistent.
+* Loads GM2 `Operation` time series
+* Performs:
+  * Histogram analysis
+  * Skewness & kurtosis
+  * KPSS stationarity test
+  * ACF / PACF visualization
+* Initializes a global results table `main_results` for:
+  * MAE
+  * MAPE
+  * Runtime (“Cost”)
 
 ---
 
-## Requirements (general)
+### 1. MODEL 0 – Baseline SARIMA (No Decomposition)
 
-- Python 3.x  
-- Jupyter Notebook / JupyterLab  
-- Typical packages (examples):
-  - `numpy`, `pandas`
-  - `matplotlib`, `seaborn` (optional)
-  - `statsmodels` (for SARIMAX)
-  - TDA-related libraries (e.g. `giotto-tda`, `ripser`, or others used in the notebooks)
-  - `scikit-learn` (for RFE, scaling, etc.)
-  - PSO library (or custom PSO implementation used in the notebook)
+* Fits SARIMA directly on raw `Operation`
+* Orders determined via KPSS & auto-arima logic
+* Test set: **last 4 time steps**
+* Metrics: **MAE, MAPE**
+* Stored as:
 
-Please check each notebook’s first cell for the exact list of imports and install any missing packages before running.
+  ```
+  BASELINE
+  ```
 
+---
+
+### 2. PART I – MSTL Decomposition & ETS Forecasting
+
+* Decomposes `Operation` using:
+  ```
+  MSTL with periods = (8, 24, 168)
+  ```
+* Extracted components:
+  * Trend
+  * Seasonal_8
+  * Seasonal_24
+  * Seasonal_168
+  * Residual
+* Each component is forecasted individually using:
+  * `ExponentialSmoothing`
+* Final forecast is obtained by:
+  ```
+  summed_up_array = Trend + Seasonal_8 + Seasonal_24 + Seasonal_168
+  ```
+* Saves:
+  * `reference.xlsx` → Ground truth
+  * `summed_up.xlsx` → Decomposition-based forecast
+
+---
+
+### 3. PART II – Feature Extraction
+
+#### 3.1 Statistical Features (TSFRESH)
+
+* Applied on:
+  ```
+  MSTL residual of Operation
+  ```
+* Sliding windows:
+  ```
+  window_length = 24
+  stride = 1
+  ```
+* Automated feature extraction using `tsfresh`
+* Standardization & cleaning
+* Output:
+  ```
+  statistical_data.xlsx
+  ```
+---
+
+#### 3.2 Topological Features (TDA – Giotto-TDA)
+
+**Phase Space Reconstruction**
+
+* Sliding Window + Takens Embedding:
+
+  ```
+  window_size = 24
+  time_delay = 8
+  embedding_dimension = 3
+  stride = 1
+  ```
+
+**Persistent Homology**
+
+* Vietoris–Rips persistence
+* Computed for:
+
+  * H0
+  * H1
+
+**Extracted Feature Groups**
+
+* Persistence Entropy
+
+* Amplitudes:
+
+  * Bottleneck
+  * Wasserstein
+  * Landscape
+
+* Betti Curves
+
+* Persistence Landscapes
+
+* Silhouettes
+
+* Heat Kernel Features:
+
+  ```
+  sigma = 0.1
+  n_bins = 100
+  ```
+
+* Carlsson-type summary statistics (f1–f5)
+
+* All features are concatenated, scaled and saved as:
+
+  ```
+  topological_data.xlsx
+  ```
+
+---
+
+### 4. PART III – Forecasting with SARIMAX
+
+All forecasts use:
+
+* Test size: **4 steps ahead**
+* Evaluation metrics:
+
+  * MAE
+  * MAPE
+* All results appended to:
+
+  ```
+  main_results
+  ```
+
+---
+
+### 4.1 MODEL 1 – Decomposition Only (No Features)
+
+* SARIMAX fitted using only MSTL-summed series
+* No exogenous inputs
+* Stored as:
+
+  ```
+  SARIMA by DECOMPOSITION W NO FEATURE
+  ```
+
+---
+
+### 4.2 TDA-Based SARIMAX Models
+
+Exogenous inputs: `topological_data.xlsx`
+
+| Model     | Description                                      |
+| --------- | ------------------------------------------------ |
+| MODEL 2   | SARIMAX with **all TDA features**                |
+| MODEL 3-1 | SARIMAX with **RFE-selected TDA features**       |
+| MODEL 4   | SARIMAX with **RFE + PSO-selected TDA features** |
+| MODEL 4-1 | **Best optimized TDA feature subset**            |
+
+---
+
+### 4.3 Statistical Feature-Based SARIMAX Models
+
+Exogenous inputs: `statistical_data.xlsx`
+
+Same structure as the TDA models:
+
+| Model     | Description                       |
+| --------- | --------------------------------- |
+| MODEL 2   | All statistical features          |
+| MODEL 3-1 | RFE-selected statistical features |
+| MODEL 4   | RFE + PSO statistical features    |
+| MODEL 4-1 | Best optimized statistical subset |
+
+---
+
+## Outputs & Saved Artifacts
+
+* **Excel Files**
+
+  * `reference.xlsx`
+  * `summed_up.xlsx`
+  * `statistical_data.xlsx`
+  * `topological_data.xlsx`
+
+* **Figures**
+
+  * GM2 distribution plots
+  * MSTL decomposition plots
+  * Forecast vs Actual plots for each model
+
+* **Final Model Comparison**
+
+  * Stored in `main_results`
+  * Includes MAE, MAPE, and runtime for all models
+
+---
+
+## Summary
+
+This notebook provides a **fully automated experimental framework** for evaluating how:
+
+* Classical decomposition,
+* Statistical features,
+* Topological features,
+* And intelligent feature selection (RFE + PSO),
+
+affect **SARIMAX forecasting performance** on the GM2 manufacturing time series.
+
+It enables:
+
+* Direct comparison of traditional vs TDA-enhanced forecasting
+* Controlled ablation of feature groups
+* Performance benchmarking under identical test conditions
+
+---
